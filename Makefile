@@ -1,8 +1,7 @@
 EXTENSION = logical_ddl
 
-MODULES = ddl_deparce
+MODULES = ddl_deparce is_publisher
 
 PG_CONFIG = pg_config
-
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
