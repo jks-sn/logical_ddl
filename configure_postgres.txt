@@ -1,0 +1,4 @@
+sudo apt-get update && sudo apt-get install -y wget build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt1-dev libssl-dev libperl-dev git bash python3 python3-pip python3-venv libipc-run-perl libfuse-dev pkg-config
+
+./configure --with-python --with-tcl --with-perl --with-systemd --enable-debug --enable-cassert --enable-depend
+
