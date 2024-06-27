@@ -1,5 +1,5 @@
 MODULE_big = logical_ddl
-OBJS = hook_ddl.o
+OBJS = hook_ddl.o publication.o subscription.o ddl_commands.o ddl_parser.o
 
 EXTENSION = logical_ddl
 DATA = logical_ddl--1.0.sql
