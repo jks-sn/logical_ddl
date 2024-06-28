@@ -5,4 +5,3 @@ module_pathname = '$libdir/logical_ddl'
 relocatable = false
 superuser = true
 schema = logical_ddl
-requires = ''

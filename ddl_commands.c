@@ -8,7 +8,7 @@ PG_FUNCTION_INFO_V1(ddl_command_trigger);
 
 void insert_ddl_command(const char *command_type, const char *command_tag, const char *command_text) {
     int ret;
-    const char *query = "INSERT INTO logical_ddl.ddl_commands (command_type, command_text) VALUES ($1, $2) RETURNING id";
+    const char *query = "INSERT INTO logical_ddl.ddl_commands (command_type, command_tag, command_text) VALUES ($1, $2, $3) RETURNING id";
     Oid argtypes[3] = {TEXTOID, TEXTOID, TEXTOID};
     Datum values[3];
     

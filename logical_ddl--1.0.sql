@@ -26,24 +26,22 @@ BEGIN
     END CASE;
 $$ LANGUAGE plpgsql;*/
 
-CREATE OR REPLACE FUNCTION logical_ddl.set_master(master BOOLEAN) RETURNS VOID AS $$
-BEGIN
-    PERFORM set_master_c(master);
-END;
-$$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION logical_ddl.get_master() RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN get_master_c();
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION logical_ddl.get_master() 
+RETURNS boolean
+AS 'logical_ddl', 'get_master_c'
+LANGUAGE C VOLATILE STRICT;
 
-CREATE OR REPLACE FUNCTION logical_ddl.ddl_command_trigger() RETURNS trigger AS $$
-BEGIN
-    PERFORM logical_ddl.ddl_command_trigger(NEW.id, NEW.command_text);
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION logical_ddl.set_master(boolean) 
+RETURNS void
+AS 'logical_ddl', 'set_master_c'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION logical_ddl.ddl_command_trigger() 
+RETURNS trigger
+AS 'MODULE_PATHNAME', 'ddl_command_trigger_c'
+LANGUAGE C VOLATILE STRICT;
+
 
 CREATE TRIGGER ddl_command_trigger
 AFTER INSERT ON logical_ddl.ddl_commands
