@@ -29,19 +29,18 @@ $$ LANGUAGE plpgsql;*/
 
 CREATE OR REPLACE FUNCTION logical_ddl.get_master() 
 RETURNS boolean
-AS 'logical_ddl', 'get_master_c'
-LANGUAGE C VOLATILE STRICT;
+AS 'MODULE_PATHNAME', 'get_master_c'
+LANGUAGE C VOLATILE;
 
 CREATE OR REPLACE FUNCTION logical_ddl.set_master(boolean) 
 RETURNS void
-AS 'logical_ddl', 'set_master_c'
-LANGUAGE C VOLATILE STRICT;
+AS 'MODULE_PATHNAME', 'set_master_c'
+LANGUAGE C VOLATILE;
 
 CREATE FUNCTION logical_ddl.ddl_command_trigger() 
 RETURNS trigger
-AS 'MODULE_PATHNAME', 'ddl_command_trigger_c'
+AS 'MODULE_PATHNAME', 'ddl_command_trigger'
 LANGUAGE C VOLATILE STRICT;
-
 
 CREATE TRIGGER ddl_command_trigger
 AFTER INSERT ON logical_ddl.ddl_commands

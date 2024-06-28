@@ -73,12 +73,12 @@ bool get_master_internal(void) {
     return is_master;
 }
 
-PGDLLEXPORT Datum set_master_c(PG_FUNCTION_ARGS) {
+Datum set_master_c(PG_FUNCTION_ARGS) {
     bool master = PG_GETARG_BOOL(0);
     set_master_internal(master);
     PG_RETURN_VOID();
 }
 
-PGDLLEXPORT Datum get_master_c(PG_FUNCTION_ARGS) {
+Datum get_master_c(PG_FUNCTION_ARGS) {
     PG_RETURN_BOOL(get_master_internal());
 }
