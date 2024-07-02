@@ -50,12 +50,12 @@ void _PG_fini(void) {
 
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc) {
+    ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", queryString)));
+
     Node *parsetree = pstmt->utilityStmt;
     const char *command_type = get_command_type(parsetree);
     const char *command_tag = get_command_tag(parsetree);
     
-    
-    ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", queryString)));
 
     if (prev_ProcessUtility) {
         prev_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
@@ -80,12 +80,12 @@ bool get_master_internal(void) {
     return is_master;
 }
 
-Datum set_master_c(PG_FUNCTION_ARGS) {
+Datum set_master(PG_FUNCTION_ARGS) {
     bool master = PG_GETARG_BOOL(0);
     set_master_internal(master);
     PG_RETURN_VOID();
 }
 
-Datum get_master_c(PG_FUNCTION_ARGS) {
+Datum get_master(PG_FUNCTION_ARGS) {
     PG_RETURN_BOOL(get_master_internal());
 }

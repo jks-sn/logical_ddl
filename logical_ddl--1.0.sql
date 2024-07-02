@@ -29,12 +29,12 @@ $$ LANGUAGE plpgsql;*/
 
 CREATE OR REPLACE FUNCTION logical_ddl.get_master() 
 RETURNS boolean
-AS 'MODULE_PATHNAME', 'get_master_c'
+AS 'MODULE_PATHNAME', 'get_master'
 LANGUAGE C VOLATILE;
 
 CREATE OR REPLACE FUNCTION logical_ddl.set_master(boolean) 
 RETURNS void
-AS 'MODULE_PATHNAME', 'set_master_c'
+AS 'MODULE_PATHNAME', 'set_master'
 LANGUAGE C VOLATILE;
 
 CREATE FUNCTION logical_ddl.ddl_command_trigger() 
