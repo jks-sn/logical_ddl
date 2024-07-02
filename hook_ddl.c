@@ -31,6 +31,7 @@ static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
     QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc);
 
 void _PG_init(void) {
+    ereport(LOG, (errmsg("Initializing logical_ddl extension")));
     ereport(LOG,
         (errmsg("ITS MY WORK ^_^ 2")));
     prev_ProcessUtility = ProcessUtility_hook;
@@ -43,6 +44,7 @@ void _PG_init(void) {
 }
 
 void _PG_fini(void) {
+    ereport(LOG, (errmsg("Unloading logical_ddl extension")));
     ProcessUtility_hook = prev_ProcessUtility; 
 }
 
@@ -51,25 +53,30 @@ static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
     Node *parsetree = pstmt->utilityStmt;
     const char *command_type = get_command_type(parsetree);
     const char *command_tag = get_command_tag(parsetree);
+    
+    
+    ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", queryString)));
 
-    if (strcmp(command_tag, "CREATE PUBLICATION") == 0 || strcmp(command_tag, "DROP PUBLICATION") == 0) {
-        if (prev_ProcessUtility) {
-            prev_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
-        } else {
-            standard_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
-        }
-        return;
+    if (prev_ProcessUtility) {
+        prev_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
+    } else {
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     }
     
-    if (command_type && command_tag) {
-       insert_ddl_command(command_type, command_tag, queryString);
+    if (is_ddl_command(parsetree)) {
+            ereport(LOG, (errmsg("Inserting DDL command: type=%s, tag=%s, query=%s", command_type, command_tag, queryString)));
+            insert_ddl_command(command_type, command_tag, queryString);
+    } else {
+        ereport(LOG, (errmsg("Skipping insertion of DDL command due to NULL command_type or command_tag with query=%s", queryString)));
     }
 }
 
 void set_master_internal(bool master) {
+    ereport(LOG, (errmsg("set_master_internal called with value: %d", master)));
     is_master = master;
 }
 bool get_master_internal(void) {
+    ereport(LOG, (errmsg("get_master_internal called, returning value: %d", is_master)));
     return is_master;
 }
 
