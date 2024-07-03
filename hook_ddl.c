@@ -21,17 +21,18 @@ void _PG_fini(void);
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static bool is_master;
+static bool in_ddl_command = false;
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
     bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, 
     QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc);
 
-void DDLSender(PlannedStmt *pstmt, const char *queryString,
+void DDLSender(PlannedStmt *pstmt, const char *query_string,
                                    ProcessUtilityContext context, ParamListInfo params,
                                    QueryEnvironment *queryEnv, DestReceiver *dest,
                                    QueryCompletion *qc);
 
-void DDLReceiver(PlannedStmt *pstmt, const char *queryString,
+void DDLReceiver(PlannedStmt *pstmt, const char *query_string,
                                      ProcessUtilityContext context, ParamListInfo params,
                                      QueryEnvironment *queryEnv, DestReceiver *dest,
                                      QueryCompletion *qc);
@@ -66,13 +67,19 @@ void _PG_fini(void) {
 
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc) {
-    ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", queryString)));
+    int			stmt_start = pstmt->stmt_location > 0 ? pstmt->stmt_location : 0;
+	int			stmt_len = pstmt->stmt_len > 0 ? pstmt->stmt_len : strlen(queryString + stmt_start);
+	char	   *query_string = palloc(stmt_len + 1);
+	strncpy(query_string, queryString + stmt_start, stmt_len);
+	query_string[stmt_len] = 0;
+    ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", query_string)));
+    ereport(LOG, (errmsg("my_ProcessUtility_hook in_ddl_command state: %d", in_ddl_command)));
     if (is_master) {
-        DDLSender(pstmt, queryString, context, params, queryEnv, dest, qc);
+        DDLSender(pstmt, query_string, context, params, queryEnv, dest, qc);
     } else {
-        DDLReceiver(pstmt, queryString, context, params, queryEnv, dest, qc);
+        DDLReceiver(pstmt, query_string, context, params, queryEnv, dest, qc);
     }
-
+    pfree(query_string);
     if (prev_ProcessUtility) {
         prev_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     } else {
@@ -80,20 +87,15 @@ static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
     }
 }
 
-void DDLSender(PlannedStmt *pstmt, const char *queryString,
+void DDLSender(PlannedStmt *pstmt, const char *query_string,
                             ProcessUtilityContext context, ParamListInfo params,
                             QueryEnvironment *queryEnv, DestReceiver *dest,
                             QueryCompletion *qc) {
     Node *parsetree = pstmt->utilityStmt;
-    int			stmt_start = pstmt->stmt_location > 0 ? pstmt->stmt_location : 0;
-	int			stmt_len = pstmt->stmt_len > 0 ? pstmt->stmt_len : strlen(queryString + stmt_start);
-	char	   *query_string = palloc(stmt_len + 1);
+
     const char *command_type = get_command_type(parsetree);
     const char *command_tag = get_command_tag(parsetree);
     bool do_command = true;
-	strncpy(query_string, queryString + stmt_start, stmt_len);
-	query_string[stmt_len] = 0;
-
     ereport(LOG, (errmsg("Replicating DDL command from sender: %s", query_string)));
     switch (nodeTag(parsetree)) {       
         case T_CreateStmt: {
@@ -122,10 +124,9 @@ void DDLSender(PlannedStmt *pstmt, const char *queryString,
     if(do_command) {
         insert_ddl_command(command_type, command_tag, query_string);
     }
-    pfree(query_string);
 }
 
-void DDLReceiver(PlannedStmt *pstmt, const char *queryString,
+void DDLReceiver(PlannedStmt *pstmt, const char *query_string,
                               ProcessUtilityContext context, ParamListInfo params,
                               QueryEnvironment *queryEnv, DestReceiver *dest,
                               QueryCompletion *qc) {
