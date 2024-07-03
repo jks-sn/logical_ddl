@@ -12,30 +12,24 @@ CREATE TABLE logical_ddl.ddl_commands (
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-/*CREATE OR REPLACE FUNCTION logical_ddl.log_ddl_command()
-RETURNS event_trigger AS $$
-DECLARE
-    command_type TEXT;
-    command_tag TEXT;
+
+DO $$
 BEGIN
-    CASE
-        WHEN TG_TAG = 'CREATE TABLE' THEN command_type := 'create'; command_tag := 'CREATE TABLE';
-        WHEN TG_TAG = 'ALTER TABLE' THEN command_type := 'alter'; command_tag := 'ALTER TABLE';
-        WHEN TG_TAG = 'DROP TABLE' THEN command_type := 'drop'; command_tag := 'DROP TABLE';
-        ELSE command_type := 'other'; command_tag := TG_TAG;
-    END CASE;
-$$ LANGUAGE plpgsql;*/
+    IF current_setting('logical_ddl.is_master', true)::boolean THEN
+        CREATE PUBLICATION logical_ddl FOR TABLE logical_ddl.ddl_commands;
+        RAISE NOTICE 'Publication logical_ddl created successfully.';
+    END IF;
+END $$;
 
-
-CREATE OR REPLACE FUNCTION logical_ddl.get_master() 
-RETURNS boolean
-AS 'MODULE_PATHNAME', 'get_master'
-LANGUAGE C VOLATILE;
-
-CREATE OR REPLACE FUNCTION logical_ddl.set_master(boolean) 
-RETURNS void
-AS 'MODULE_PATHNAME', 'set_master'
-LANGUAGE C VOLATILE;
+DO $$
+BEGIN
+    IF NOT current_setting('logical_ddl.is_master', true)::boolean THEN
+        CREATE SUBSCRIPTION logical_ddl_sub
+        CONNECTION 'host=localhost port=5432 user=your_user password=your_password dbname=your_dbname'
+        PUBLICATION logical_ddl;
+        RAISE NOTICE 'Subscription logical_ddl_sub created successfully.';
+    END IF;
+END $$;
 
 CREATE FUNCTION logical_ddl.ddl_command_trigger() 
 RETURNS trigger

@@ -12,6 +12,8 @@ void insert_ddl_command(const char *command_type, const char *command_tag, const
     Oid argtypes[3] = {TEXTOID, TEXTOID, TEXTOID};
     Datum values[3];
     
+    ereport(LOG, (errmsg("Inserting DDL command: type=%s, tag=%s, query=%s", command_type, command_tag, command_text)));
+
     SPI_connect();
 
     values[0] = CStringGetTextDatum(command_type);

@@ -121,18 +121,3 @@ const char *get_command_tag(Node *parsetree) {
             return "UNKNOWN";
     }
 }
-
-bool is_ddl_command(Node *parsetree) {
-    switch (nodeTag(parsetree)) {
-        case T_CreateStmt:
-        case T_AlterTableStmt:
-        case T_DropStmt:
-        case T_IndexStmt:
-        case T_ViewStmt:
-        case T_VariableSetStmt:
-        case T_RenameStmt:
-            return true;
-        default:
-            return false;
-    }
-}

@@ -13,7 +13,6 @@
 #include "publication.h"
 #include "subscription.h"
 #include "ddl_parser.h"
-#include "hook_ddl.h"
 
 PG_MODULE_MAGIC;
 
@@ -21,26 +20,43 @@ void _PG_init(void);
 void _PG_fini(void);
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-static bool is_master = true;
-
-void set_master_internal(bool master);
-bool get_master_internal(void);
+static bool is_master;
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
     bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, 
     QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc);
 
+void DDLSender(PlannedStmt *pstmt, const char *queryString,
+                                   ProcessUtilityContext context, ParamListInfo params,
+                                   QueryEnvironment *queryEnv, DestReceiver *dest,
+                                   QueryCompletion *qc);
+
+void DDLReceiver(PlannedStmt *pstmt, const char *queryString,
+                                     ProcessUtilityContext context, ParamListInfo params,
+                                     QueryEnvironment *queryEnv, DestReceiver *dest,
+                                     QueryCompletion *qc);
+
 void _PG_init(void) {
-    ereport(LOG, (errmsg("Initializing logical_ddl extension")));
     ereport(LOG,
         (errmsg("ITS MY WORK ^_^ 2")));
+
+    DefineCustomBoolVariable(
+        "logical_ddl.is_master",
+        "Determines if this node is a master",
+        NULL,
+        &is_master,
+        false,
+        PGC_USERSET,
+        0,
+        NULL,
+        NULL,
+        NULL
+    );
+
+    ereport(LOG, (errmsg("Initializing logical_ddl extension")));
+    ereport(LOG, (errmsg("logical_ddl.is_master = %s", is_master ? "true" : "false")));
     prev_ProcessUtility = ProcessUtility_hook;
     ProcessUtility_hook = my_ProcessUtility_hook; 
-
-    if (get_master_internal()) {
-        create_publication("logical_ddl.ddl_commands");
-    }
-
 }
 
 void _PG_fini(void) {
@@ -51,41 +67,67 @@ void _PG_fini(void) {
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc) {
     ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", queryString)));
-
-    Node *parsetree = pstmt->utilityStmt;
-    const char *command_type = get_command_type(parsetree);
-    const char *command_tag = get_command_tag(parsetree);
-    
+    if (is_master) {
+        DDLSender(pstmt, queryString, context, params, queryEnv, dest, qc);
+    } else {
+        DDLReceiver(pstmt, queryString, context, params, queryEnv, dest, qc);
+    }
 
     if (prev_ProcessUtility) {
         prev_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     } else {
         standard_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
     }
-    
-    if (is_ddl_command(parsetree)) {
-            ereport(LOG, (errmsg("Inserting DDL command: type=%s, tag=%s, query=%s", command_type, command_tag, queryString)));
-            insert_ddl_command(command_type, command_tag, queryString);
-    } else {
-        ereport(LOG, (errmsg("Skipping insertion of DDL command due to NULL command_type or command_tag with query=%s", queryString)));
+}
+
+void DDLSender(PlannedStmt *pstmt, const char *queryString,
+                            ProcessUtilityContext context, ParamListInfo params,
+                            QueryEnvironment *queryEnv, DestReceiver *dest,
+                            QueryCompletion *qc) {
+    Node *parsetree = pstmt->utilityStmt;
+    int			stmt_start = pstmt->stmt_location > 0 ? pstmt->stmt_location : 0;
+	int			stmt_len = pstmt->stmt_len > 0 ? pstmt->stmt_len : strlen(queryString + stmt_start);
+	char	   *query_string = palloc(stmt_len + 1);
+    const char *command_type = get_command_type(parsetree);
+    const char *command_tag = get_command_tag(parsetree);
+    bool do_command = true;
+	strncpy(query_string, queryString + stmt_start, stmt_len);
+	query_string[stmt_len] = 0;
+
+    ereport(LOG, (errmsg("Replicating DDL command from sender: %s", query_string)));
+    switch (nodeTag(parsetree)) {       
+        case T_CreateStmt: {
+            CreateStmt *stmt = (CreateStmt *) parsetree;
+            ereport(LOG, (errmsg("Handling CREATE TABLE command: %s", stmt->relation->relname)));
+            break;
+        }
+        case T_AlterTableStmt: {
+            AlterTableStmt *stmt = (AlterTableStmt *) parsetree;
+            ereport(LOG, (errmsg("Handling ALTER TABLE command: %s", stmt->relation->relname)));
+            break;
+        }
+        case T_DropStmt: {
+            DropStmt *stmt = (DropStmt *) parsetree;
+            if (stmt->removeType == OBJECT_TABLE) {
+                ereport(LOG, (errmsg("Handling DROP TABLE command")));
+            }
+            break;
+        }
+        default: {
+            do_command = false;
+            ereport(LOG, (errmsg("Skipping insertion of DDL command due to NULL command_type or command_tag with query=%s", query_string)));
+            break;
+        }
     }
+    if(do_command) {
+        insert_ddl_command(command_type, command_tag, query_string);
+    }
+    pfree(query_string);
 }
 
-void set_master_internal(bool master) {
-    ereport(LOG, (errmsg("set_master_internal called with value: %d", master)));
-    is_master = master;
-}
-bool get_master_internal(void) {
-    ereport(LOG, (errmsg("get_master_internal called, returning value: %d", is_master)));
-    return is_master;
-}
+void DDLReceiver(PlannedStmt *pstmt, const char *queryString,
+                              ProcessUtilityContext context, ParamListInfo params,
+                              QueryEnvironment *queryEnv, DestReceiver *dest,
+                              QueryCompletion *qc) {
 
-Datum set_master(PG_FUNCTION_ARGS) {
-    bool master = PG_GETARG_BOOL(0);
-    set_master_internal(master);
-    PG_RETURN_VOID();
-}
-
-Datum get_master(PG_FUNCTION_ARGS) {
-    PG_RETURN_BOOL(get_master_internal());
 }
