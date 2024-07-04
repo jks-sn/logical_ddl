@@ -1,0 +1,7 @@
+# logical_ddl.control
+comment = 'Logical DDL replication extension'
+default_version = '1.0'
+module_pathname = '$libdir/logical_ddl'
+relocatable = false
+superuser = true
+schema = logical_ddl
