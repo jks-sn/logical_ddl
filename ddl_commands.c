@@ -1,26 +1,42 @@
 #include "postgres.h"
+#include "nodes/parsenodes.h"
+#include "tcop/utility.h"
 #include "executor/spi.h"
 #include "commands/trigger.h"
+#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "ddl_commands.h"
+#include "lib/stringinfo.h"
 
 PG_FUNCTION_INFO_V1(ddl_command_trigger);
 
-void insert_ddl_command(const char *command_type, const char *command_tag, const char *command_text) {
+void insert_ddl_command(const char *command_type, const char *command_tag, const char *schema_name, const char *relation_name, const char *query_string) {
     int ret;
-    const char *query = "INSERT INTO logical_ddl.ddl_commands (command_type, command_tag, command_text) VALUES ($1, $2, $3) RETURNING id";
-    Oid argtypes[3] = {TEXTOID, TEXTOID, TEXTOID};
-    Datum values[3];
-    
-    ereport(LOG, (errmsg("Inserting DDL command: type=%s, tag=%s, query=%s", command_type, command_tag, command_text)));
+    const char *query = "INSERT INTO logical_ddl.ddl_commands (command_type, command_tag, schema_name, relation_name, command_text) VALUES ($1, $2, $3, $4, $5) RETURNING id";
+    Oid argtypes[5] = {TEXTOID, TEXTOID, TEXTOID, TEXTOID, TEXTOID};
+    Datum values[5];
+    char nulls[5] = {' ', ' ', ' ', ' ', ' '};
+
+    ereport(LOG, (errmsg("Inserting DDL command: type=%s, tag=%s, schema=%s, relation=%s, query=%s", 
+                         command_type, command_tag, schema_name, relation_name, query_string)));
 
     SPI_connect();
 
     values[0] = CStringGetTextDatum(command_type);
     values[1] = CStringGetTextDatum(command_tag);
-    values[2] = CStringGetTextDatum(command_text);
+    values[2] = schema_name ? CStringGetTextDatum(schema_name) : (Datum) 0;
+    values[3] = relation_name ? CStringGetTextDatum(relation_name) : (Datum) 0;
+    values[4] = CStringGetTextDatum(query_string);
 
-    ret = SPI_execute_with_args(query, 3, argtypes, values, NULL, false, 0);
+    if (schema_name == NULL) {
+        nulls[2] = 'n';
+    }
+
+    if (relation_name == NULL) {
+        nulls[3] = 'n';
+    }
+
+    ret = SPI_execute_with_args(query, 5, argtypes, values, nulls, false, 0);
     if (ret != SPI_OK_INSERT_RETURNING) {
         ereport(ERROR,
                 (errcode(ERRCODE_INTERNAL_ERROR),

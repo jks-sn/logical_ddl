@@ -8,6 +8,8 @@ CREATE TABLE logical_ddl.ddl_commands (
     id SERIAL PRIMARY KEY,
     command_type TEXT NOT NULL,
     command_tag TEXT NOT NULL,
+    schema_name TEXT,
+    relation_name TEXT,
     command_text TEXT NOT NULL,
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -35,8 +37,3 @@ CREATE FUNCTION logical_ddl.ddl_command_trigger()
 RETURNS trigger
 AS 'MODULE_PATHNAME', 'ddl_command_trigger'
 LANGUAGE C VOLATILE STRICT;
-
-CREATE TRIGGER ddl_command_trigger
-AFTER INSERT ON logical_ddl.ddl_commands
-FOR EACH ROW
-EXECUTE FUNCTION logical_ddl.ddl_command_trigger();

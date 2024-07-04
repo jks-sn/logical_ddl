@@ -10,9 +10,12 @@
 #include "storage/proc.h"
 #include "utils/builtins.h"
 #include "ddl_commands.h"
-#include "publication.h"
-#include "subscription.h"
+#include "nodes/parsenodes.h"
 #include "ddl_parser.h"
+#include "catalog/namespace.h"  
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_class.h"    
+#include "utils/lsyscache.h"
 
 PG_MODULE_MAGIC;
 
@@ -21,18 +24,17 @@ void _PG_fini(void);
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static bool is_master;
-static bool in_ddl_command = false;
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
     bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, 
     QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc);
 
-void DDLSender(PlannedStmt *pstmt, const char *query_string,
+void DDLSender(PlannedStmt *pstmt, const char *query_String,
                                    ProcessUtilityContext context, ParamListInfo params,
                                    QueryEnvironment *queryEnv, DestReceiver *dest,
                                    QueryCompletion *qc);
 
-void DDLReceiver(PlannedStmt *pstmt, const char *query_string,
+void DDLReceiver(PlannedStmt *pstmt, const char *query_String,
                                      ProcessUtilityContext context, ParamListInfo params,
                                      QueryEnvironment *queryEnv, DestReceiver *dest,
                                      QueryCompletion *qc);
@@ -73,7 +75,6 @@ static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, 
 	strncpy(query_string, queryString + stmt_start, stmt_len);
 	query_string[stmt_len] = 0;
     ereport(LOG, (errmsg("my_ProcessUtility_hook called for command: %s", query_string)));
-    ereport(LOG, (errmsg("my_ProcessUtility_hook in_ddl_command state: %d", in_ddl_command)));
     if (is_master) {
         DDLSender(pstmt, query_string, context, params, queryEnv, dest, qc);
     } else {
@@ -92,26 +93,47 @@ void DDLSender(PlannedStmt *pstmt, const char *query_string,
                             QueryEnvironment *queryEnv, DestReceiver *dest,
                             QueryCompletion *qc) {
     Node *parsetree = pstmt->utilityStmt;
-
-    const char *command_type = get_command_type(parsetree);
-    const char *command_tag = get_command_tag(parsetree);
+    const char *command_type = NULL;
+    const char *command_tag = NULL;
+    const char *command_schema_name = NULL;
+    const char *command_relation_name = NULL;
     bool do_command = true;
-    ereport(LOG, (errmsg("Replicating DDL command from sender: %s", query_string)));
     switch (nodeTag(parsetree)) {       
         case T_CreateStmt: {
             CreateStmt *stmt = (CreateStmt *) parsetree;
-            ereport(LOG, (errmsg("Handling CREATE TABLE command: %s", stmt->relation->relname)));
+            command_type = "Create";
+            command_tag = "CREATE TABLE";
+            command_schema_name = stmt->relation->schemaname;
+            command_relation_name = stmt->relation->relname;
+            ereport(LOG, (errmsg("CreateStmt detected: schema=%s, relation=%s", command_schema_name, command_relation_name)));
             break;
         }
         case T_AlterTableStmt: {
             AlterTableStmt *stmt = (AlterTableStmt *) parsetree;
-            ereport(LOG, (errmsg("Handling ALTER TABLE command: %s", stmt->relation->relname)));
+            command_type = "Alter";
+            command_tag = "ALTER TABLE";
+            command_schema_name = stmt->relation->schemaname;
+            command_relation_name = stmt->relation->relname;
             break;
         }
         case T_DropStmt: {
             DropStmt *stmt = (DropStmt *) parsetree;
+            command_type = "Drop";
+            command_tag = "DROP TABLE";
             if (stmt->removeType == OBJECT_TABLE) {
-                ereport(LOG, (errmsg("Handling DROP TABLE command")));
+                ListCell *cell;
+                foreach (cell, stmt->objects) {
+                    List *objName = (List *)lfirst(cell);
+                    command_relation_name = strVal(linitial(objName));
+                    Oid relid = get_relname_relid(command_relation_name, InvalidOid);
+                    if (OidIsValid(relid)) {
+                        Oid namespace_id = get_rel_namespace(relid);
+                        command_schema_name = get_namespace_name(namespace_id);
+                    }
+                }
+            }
+            else {
+                do_command = false;
             }
             break;
         }
@@ -121,8 +143,17 @@ void DDLSender(PlannedStmt *pstmt, const char *query_string,
             break;
         }
     }
-    if(do_command) {
-        insert_ddl_command(command_type, command_tag, query_string);
+    if (command_schema_name == NULL && command_relation_name != NULL) {
+        Oid relid = get_relname_relid(command_relation_name, InvalidOid);
+        if (OidIsValid(relid)) {
+            Oid namespace_id = get_rel_namespace(relid);
+            command_schema_name = get_namespace_name(namespace_id);
+            ereport(LOG, (errmsg("Fallback schema name extraction: schema=%s, relation=%s", command_schema_name, command_relation_name)));
+        }
+    }
+    if(do_command) { 
+        ereport(LOG, (errmsg("Handling command with type: %s, tag: %s, schema: %s, relation: %s, query: %s", command_type, command_tag, command_schema_name, command_relation_name, query_string)));
+        insert_ddl_command(command_type, command_tag, command_schema_name, command_relation_name, query_string);
     }
 }
 
