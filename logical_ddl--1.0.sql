@@ -62,7 +62,7 @@ BEGIN
                 CONTINUE;
             END IF;
 
-            PERFORM handle_ddl_command(
+            PERFORM logical_ddl.handle_ddl_command(
                 r.classid,
                 r.objid,
                 r.objsubid,

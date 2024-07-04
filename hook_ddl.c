@@ -33,8 +33,7 @@ static void DDLReceiver(Oid classid, Oid objid, int32 objsubid, const char *comm
 PG_FUNCTION_INFO_V1(handle_ddl_command_c);
 
 Datum
-handle_ddl_command_c(PG_FUNCTION_ARGS)
-{
+handle_ddl_command_c(PG_FUNCTION_ARGS) {
     Oid classid = PG_GETARG_OID(0);
     Oid objid = PG_GETARG_OID(1);
     int32 objsubid = PG_GETARG_INT32(2);
