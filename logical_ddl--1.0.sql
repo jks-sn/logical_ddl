@@ -15,25 +15,41 @@ CREATE TABLE logical_ddl.ddl_commands (
 );
 
 
-DO $$
-BEGIN
-    IF current_setting('logical_ddl.is_master', true)::boolean THEN
-        CREATE PUBLICATION logical_ddl FOR TABLE logical_ddl.ddl_commands;
-        RAISE NOTICE 'Publication logical_ddl created successfully.';
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF NOT current_setting('logical_ddl.is_master', true)::boolean THEN
-        CREATE SUBSCRIPTION logical_ddl_sub
-        CONNECTION 'host=localhost port=5432 user=your_user password=your_password dbname=your_dbname'
-        PUBLICATION logical_ddl;
-        RAISE NOTICE 'Subscription logical_ddl_sub created successfully.';
-    END IF;
-END $$;
-
 CREATE FUNCTION logical_ddl.ddl_command_trigger() 
 RETURNS trigger
 AS 'MODULE_PATHNAME', 'ddl_command_trigger'
 LANGUAGE C VOLATILE STRICT;
+
+DO $$
+BEGIN
+    IF current_setting('logical_ddl.is_master', true)::boolean THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_publication WHERE pubname = 'logical_ddl_pub'
+        ) THEN
+            CREATE PUBLICATION logical_ddl_pub FOR TABLE logical_ddl.ddl_commands;
+            RAISE NOTICE 'Publication logical_ddl_pub created successfully.';
+        ELSE
+            RAISE NOTICE 'Publication logical_ddl_pub already exists.';
+        END IF;
+
+    ELSE
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_subscription WHERE subname = 'logical_ddl_sub'
+        ) THEN
+            CREATE SUBSCRIPTION logical_ddl_sub
+            CONNECTION 'host=localhost port=5432 dbname=postgres'
+            PUBLICATION logical_ddl_pub
+            WITH (create_slot = false);
+            RAISE NOTICE 'Subscription logical_ddl_sub created successfully.';
+        ELSE
+            RAISE NOTICE 'Subscription logical_ddl_sub already exists.';
+        END IF;
+
+        CREATE TRIGGER ddl_command_trigger 
+        AFTER INSERT ON logical_ddl.ddl_commands 
+        FOR EACH ROW 
+        EXECUTE FUNCTION logical_ddl.ddl_command_trigger();
+
+        ALTER TABLE logical_ddl.ddl_commands ENABLE TRIGGER ALL;
+    END IF;
+END $$;

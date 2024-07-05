@@ -60,27 +60,53 @@ void execute_ddl_command(int32 id, const char *command_text) {
     SPI_finish();
 }
 
-Datum ddl_command_trigger(PG_FUNCTION_ARGS) {
-    TriggerData *trigdata = (TriggerData *) fcinfo->context;
-    if (!CALLED_AS_TRIGGER(fcinfo)) {
-        ereport(ERROR,
-                (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
-                 errmsg("ddl_command_trigger: called, but not by trigger")));
+void handle_ddl_command(const char *command_type, const char *command_tag, const char *command_text, const char *schema_name, const char *relation_name) {
+    ereport(LOG, (errmsg("Subscriber: Handling DDL command: type=%s, tag=%s, schema=%s, relation=%s, query=%s",
+                         command_type, command_tag, schema_name, relation_name, command_text)));
+
+    SPI_connect();
+    int ret = SPI_execute(command_text, false, 0);
+    if (ret != SPI_OK_UTILITY && ret != SPI_OK_SELECT) {
+        ereport(LOG, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Failed to execute DDL command")));
     }
+    SPI_finish();
+}
+
+Datum ddl_command_trigger(PG_FUNCTION_ARGS) {
+
+    ereport(LOG, (errmsg("ddl_command_trigger start execute")));
+
+    TriggerData *trigdata = (TriggerData *) fcinfo->context;
+    if (!CALLED_AS_TRIGGER(fcinfo))
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("not called by trigger manager")));
+
+    ereport(LOG, (errmsg("Trigger fired by event: %u", trigdata->tg_event)));
 
     if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event)) {
-        HeapTuple new_row = trigdata->tg_trigtuple;
-        bool isnull;
-        Datum id_datum = SPI_getbinval(new_row, trigdata->tg_relation->rd_att, SPI_fnumber(trigdata->tg_relation->rd_att, "id"), &isnull);
-        Datum command_text_datum = SPI_getbinval(new_row, trigdata->tg_relation->rd_att, SPI_fnumber(trigdata->tg_relation->rd_att, "command_text"), &isnull);
+        TupleDesc tupdesc = trigdata->tg_relation->rd_att;
+        HeapTuple rettuple = trigdata->tg_trigtuple;
 
-        int32 id = DatumGetInt32(id_datum);
-        char *command_text = TextDatumGetCString(command_text_datum);
+        char *id = SPI_getvalue(rettuple, tupdesc, 1);
+        
+        char *command_type = SPI_getvalue(rettuple, tupdesc, 2);
+        char *command_tag = SPI_getvalue(rettuple, tupdesc, 3);
+        char *schema_name = SPI_getvalue(rettuple, tupdesc, 4);
+        char *relation_name = SPI_getvalue(rettuple, tupdesc, 5);
+        char *command_text = SPI_getvalue(rettuple, tupdesc, 6);
 
-        execute_ddl_command(id, command_text);
+        ereport(LOG, (errmsg("Received DDL command: type=%s, tag=%s, schema=%s, relation=%s, text=%s",
+                             command_type ? command_type : "(null)",
+                             command_tag ? command_tag : "(null)",
+                             schema_name ? schema_name : "(null)",
+                             relation_name ? relation_name : "(null)",
+                             command_text ? command_text : "(null)")));
 
-        pfree(command_text);
+        handle_ddl_command(command_type, command_tag, command_text, schema_name, relation_name);
+
+        ereport(LOG, (errmsg("ddl_command_trigger executed")));
+    } else {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Trigger not fired by insert")));
     }
 
-    return PointerGetDatum(NULL);
+    return PointerGetDatum(trigdata->tg_trigtuple);
 }
