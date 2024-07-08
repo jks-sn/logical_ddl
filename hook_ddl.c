@@ -67,7 +67,6 @@ void _PG_fini(void) {
     ProcessUtility_hook = prev_ProcessUtility; 
 }
 
-
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc) {
     int			stmt_start = pstmt->stmt_location > 0 ? pstmt->stmt_location : 0;
 	int			stmt_len = pstmt->stmt_len > 0 ? pstmt->stmt_len : strlen(queryString + stmt_start);

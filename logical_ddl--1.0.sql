@@ -14,6 +14,7 @@ CREATE TABLE logical_ddl.ddl_commands (
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE logical_ddl.ddl_commands ENABLE TRIGGER ALL;
 
 CREATE FUNCTION logical_ddl.ddl_command_trigger() 
 RETURNS trigger
@@ -49,7 +50,5 @@ BEGIN
         AFTER INSERT ON logical_ddl.ddl_commands 
         FOR EACH ROW 
         EXECUTE FUNCTION logical_ddl.ddl_command_trigger();
-
-        ALTER TABLE logical_ddl.ddl_commands ENABLE TRIGGER ALL;
     END IF;
 END $$;
