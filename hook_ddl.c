@@ -39,6 +39,7 @@ void DDLReceiver(PlannedStmt *pstmt, const char *query_String,
                                      QueryEnvironment *queryEnv, DestReceiver *dest,
                                      QueryCompletion *qc);
 
+
 void _PG_init(void) {
     ereport(LOG,
         (errmsg("ITS MY WORK ^_^ 2")));
@@ -66,6 +67,7 @@ void _PG_fini(void) {
     ereport(LOG, (errmsg("Unloading logical_ddl extension")));
     ProcessUtility_hook = prev_ProcessUtility; 
 }
+
 
 static void my_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree, ProcessUtilityContext context, ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest, QueryCompletion *qc) {
     int			stmt_start = pstmt->stmt_location > 0 ? pstmt->stmt_location : 0;
@@ -162,3 +164,35 @@ void DDLReceiver(PlannedStmt *pstmt, const char *query_string,
                               QueryCompletion *qc) {
 
 }
+
+
+// void create_replication_slot_and_subscription(void) {
+//     if (!IsTransactionState()) {
+//         StartTransactionCommand();
+//     }
+
+//     SPI_connect();
+
+//     if (is_master) {
+//         ereport(LOG, (errmsg("Creating publication and replication slot on master")));
+
+//         SPI_execute("CREATE PUBLICATION logical_ddl_pub FOR TABLE logical_ddl.ddl_commands;", false, 0);
+
+//         SPI_execute("CREATE SUBSCRIPTION logical_ddl_status_sub" 
+//                     "CONNECTION 'host=localhost port=5433 dbname=postgres'"
+//                     "PUBLICATION logical_ddl_status_pub WITH (slot_name = 'false');", false, 0);
+//     }
+//     else {
+//         ereport(LOG, (errmsg("Creating publication and subscription on replica")));
+
+//         SPI_execute("CREATE PUBLICATION logical_ddl_status_pub FOR TABLE logical_ddl.command_status;", false, 0);
+
+//         SPI_execute("CREATE SUBSCRIPTION logical_ddl_sub "
+//                     "CONNECTION 'host=localhost port=5432 dbname=postgres'"
+//                     "PUBLICATION logical_ddl_pub WITH (slot_name = 'logical_ddl_sub_slot');", false, 0);    
+//     }
+
+//     SPI_finish();
+//     if (IsTransactionState())
+//         CommitTransactionCommand();
+// }
