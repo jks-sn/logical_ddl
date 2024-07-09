@@ -115,6 +115,7 @@ void DDLSender(PlannedStmt *pstmt, const char *query_string,
             command_tag = "ALTER TABLE";
             command_schema_name = stmt->relation->schemaname;
             command_relation_name = stmt->relation->relname;
+            ereport(LOG, (errmsg("AtlerTableStmt objtype: %d", stmt->objtype)));
             break;
         }
         case T_DropStmt: {

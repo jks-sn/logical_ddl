@@ -53,7 +53,6 @@ void insert_ddl_command(const char *command_type, const char *command_tag, const
 
 PG_FUNCTION_INFO_V1(ddl_command_trigger);
 Datum ddl_command_trigger(PG_FUNCTION_ARGS) {
-
     ereport(LOG, (errmsg("ddl_command_trigger start execute")));
 
     TriggerData *trigdata = (TriggerData *) fcinfo->context;
@@ -82,55 +81,60 @@ Datum ddl_command_trigger(PG_FUNCTION_ARGS) {
                             relation_name ? relation_name : "(null)",
                             command_text ? command_text : "(null)")));
 
+    bool command_success = false;
+    char *error_message = NULL;
+    
+	MemoryContext oldcontext = CurrentMemoryContext;
     PG_TRY(); 
     {
         SPI_connect();
         int ret = SPI_execute(command_text, false, 0);
-        SPI_finish();
 
         if (ret != SPI_OK_UTILITY) {
             ereport(ERROR, (errmsg("Failed to execute command: %s", command_text)));
         }
         ereport(LOG, (errmsg("Successfully executed command: %s", command_text)));
-        SPI_connect();
-        const char *query = "INSERT INTO logical_ddl.command_status (command_id, status, result) VALUES ($1, 'success', $2)";
-        Oid argtypes[2] = {INT4OID, TEXTOID};
-        Datum values[2];
-        values[0] = Int32GetDatum(atoi(id));
-        values[1] = CStringGetTextDatum("Command executed successfully");
-
-        SPI_execute_with_args(query, 2, argtypes, values, NULL, false, 0);
-        SPI_finish();
+        command_success = true;
     }
     PG_CATCH();
     {
         ErrorData *edata;
-        MemoryContext oldcontext;
 
-        oldcontext = MemoryContextSwitchTo(ErrorContext);
-        edata = CopyErrorData();
         MemoryContextSwitchTo(oldcontext);
+        edata = CopyErrorData();
         FlushErrorState();
 
         ereport(LOG, (errmsg("Failed to execute command: %s, Error: %s", command_text, edata->message)));
-
-        SPI_connect();
-        const char *query = "INSERT INTO logical_ddl.command_status (command_id, status, error_message) VALUES ($1, 'failure', $2)";
-        Oid argtypes[2] = {INT4OID, TEXTOID};
-        Datum values[2];
-        values[0] = Int32GetDatum(atoi(id));
-        values[1] = CStringGetTextDatum(edata->message);
-
-        SPI_execute_with_args(query, 2, argtypes, values, NULL, false, 0);
-        SPI_finish();
-
-        pfree(edata);
+        error_message = pstrdup(edata->message); //problems with pallloc ?
+        command_success = false;
     }
     PG_END_TRY();
+    
+    SPI_finish();
+    
+    SPI_connect();
+    const char *query = "INSERT INTO logical_ddl.command_status (command_id, status, result, error_message) VALUES ($1, $2, $3, $4)";
+    Oid argtypes[4] = {INT4OID, TEXTOID, TEXTOID, TEXTOID};
+    Datum values[4];
+    char nulls[4] = {' ', ' ', 'n', 'n'};
+
+    values[0] = Int32GetDatum(atoi(id));
+    values[1] = CStringGetTextDatum(command_success ? "success" : "failure");
+
+    if (command_success) {
+        values[2] = CStringGetTextDatum("Command executed successfully");
+        nulls[2] = false;
+    } else if (error_message) {
+        values[3] = CStringGetTextDatum(error_message);
+        nulls[3] = false;
+    }
+
+    SPI_execute_with_args(query, 4, argtypes, values, nulls, false, 0);
+    SPI_finish();
 
     ereport(LOG, (errmsg("ddl_command_trigger executed")));
 
-    return PointerGetDatum(trigdata->tg_trigtuple);
+    PG_RETURN_POINTER(rettuple);
 }
 
 PG_FUNCTION_INFO_V1(command_status_trigger);
