@@ -1,0 +1,15 @@
+trash/
+.deps/
+.vscode/
+ddl_commands.o
+ddl_parser.o
+help/test.txt
+hook_ddl.o
+log_ddl.c
+logical_ddl.so
+publication.c
+publication.h
+publication.o
+subscription.c
+subscription.h
+subscription.o
